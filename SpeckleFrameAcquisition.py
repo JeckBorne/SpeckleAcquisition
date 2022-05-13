@@ -20,11 +20,13 @@ while(True):
         if cv2.waitKey(1) & 0xFF == ord("s"): # Press "s" to save frame
             filename = input("Under what name should the image be saved?: ") # The name of the image
             relative_path = f"Figure/{filename}.png" # Where the image will be saved and what format
+            relative_path_histo = f"Figure/{filename}Histogram.png" # Where the histogram will be saved and what format
             cv2.imwrite(relative_path, frame) # Saves frame
             print(f"The image was successfully saved as {relative_path}")
             plt.hist(frame.flatten(), bins=256, range=(0, 255)) # Creates histogram of pixel intensity
-            plt.savefig(f"Figure/{filename}Histogram.png") # Saves the histogram
+            plt.savefig(relative_path_histo) # Saves the histogram
             plt.show() # Shows the histogram
+            print(f"The histogram was successfully saved as {relative_path_histo}")
             break
         if cv2.waitKey(1) & 0xFF == ord("q"): # Press "q" to stop video feed
             break
