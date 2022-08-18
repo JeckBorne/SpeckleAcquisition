@@ -205,31 +205,42 @@ class SpeckleAnalysis():
         Normalized = np.float64(Normalized/np.max(Normalized))
         return Normalized
     
-    def correlation(folderpath, correctionPath, start=0, end=1000):
-        """Calculates the correlation between the first image of a folder and the follwing images. Prints the correlation\n
-        values and shows the decorelation graph.
+    def correlation(folderpath, time_seperation=1, time_scale="seconds", start=0, end=1000, expo_fit=False):
+        """Calculates the correlation between the first image of a folder and the follwing images. Shows the correlation graph.
 
         Args:
             folderpath (string): The path of the folder where the images are saved
-            correctionPath (string): The path to the correction image
+            time_seperation (int, optional): The time seperation between the images. Defaults to 1.
+            time_scale (string, optional): The time scale of the time seperation. Defaults to "seconds".
+            start (int, optional): The start time of the correlation. Defaults to 0.
+            end (int, optional): The end time of the correlation. Defaults to 30.
         """
         allfiles=os.listdir(folderpath)
-        correctionImage = SpeckleAnalysis.getImage(correctionPath)
         corr = []
         imlist= [filename for filename in allfiles if filename[-5:]==".tiff"]
-        initialSpeckle = SpeckleAnalysis.NormalizeSpeckles(SpeckleAnalysis.getImage(f"{folderpath}/{imlist[start]}")[:,0:-1], correctionImage)
+        initialSpeckle = SpeckleAnalysis.getImage(f"{folderpath}/{imlist[start]}")[:,0:-1]
         Xstd, Xmean = np.std(initialSpeckle), np.mean(initialSpeckle)
         for image in SpeckleAnalysis.sortedAlphanumeric(imlist)[start:end]:
             clear_output(wait=True)
-            speckleImageY = SpeckleAnalysis.NormalizeSpeckles(SpeckleAnalysis.getImage(f"{folderpath}/{image}")[:,0:-1],correctionImage)
+            speckleImageY = SpeckleAnalysis.getImage(f"{folderpath}/{image}")[:,0:-1]
             Ystd, Ymean = np.std(speckleImageY), np.mean(speckleImageY)
             corr.append(np.mean((initialSpeckle-Xmean)*(speckleImageY-Ymean))/(Xstd*Ystd))
             print(f"{len(corr)}/{len(allfiles[start:end])}")
         fig = plt.figure()
         fig.patch.set_facecolor("white")
-        time = np.arange(0,len(corr)*5, 5)
+        time = np.arange(0,len(corr)*time_seperation, time_seperation)
+        if expo_fit == True:
+            def exponential(x,a,b,c):
+                return a * np.exp(-b * x) + c
+
+            try:
+                popt, pcov = curve_fit(exponential, time, corr)
+                plt.plot(time, exponential(time, *popt), 'r-', label='Exponential Fit')
+                print(f"The exponential fit parameters are: a={popt[0]}, b={popt[1]}, c={popt[2]}")
+            except RuntimeError:
+                print("Error - curve_fit failed")
         plt.title("Correlation through time of speckle pattern")
-        plt.xlabel("Time (minutes)")
+        plt.xlabel(f"Time ({time_scale})")
         plt.ylabel("Correlation coefficient (a.u.)")
         plt.scatter(time, corr, color="black")
         plt.show()
@@ -282,7 +293,7 @@ class SpeckleAnalysis():
                     speckleImageY = SpeckleAnalysis.getImage(f"{folderpath}/{image}")
                     Ystd, Ymean = np.std(speckleImageY), np.mean(speckleImageY)
                     correlationValues.append(np.mean((speckleImageX-Xmean)*(speckleImageY-Ymean))/(Xstd*Ystd))
-                time = np.arange(0,len(correlationValues), time_seperation)
+                time = np.arange(0,len(correlationValues)*time_seperation, time_seperation)
                 popt, pcov = curve_fit(expo, time, correlationValues)
                 y_pred = expo(time, *popt)
                 r = r2_score(correlationValues, y_pred)
@@ -323,3 +334,49 @@ class SpeckleAnalysis():
         ax2.legend()
         plt.show()
 
+    def CorrelationCurveVSWindow_size(folderpath, start=0, end=100000, window_size=1944, time_seperation=1, time_scale="seconds", expo_fit=False):
+        """This function plots the correlation curve for images of the speckle patterns stored in the folder given.
+        
+        folderpath (string): Path of the folder where all the images are saved
+        start (int): First image to be considered. Default is 0.
+        end (int): Last image to be considered. Default is 100000.
+        window_size (int): Size of the window used to calculate the correlation. Default is 1944.
+        time_seperation (int): Time unit of seperation between the images. Defaults is 1.
+        time_scale (string): Time scale of the correlation time. This is used to plot the correlation time distribution. Default is "seconds".
+        expo_fit (bool): If True, the correlation curve is fitted with an exponential function. Defaults to False.
+
+        return: correlation curve plot.
+        """
+        allfiles=SpeckleAnalysis.sortedAlphanumeric(os.listdir(folderpath))
+        allfiles= [filename for filename in allfiles if filename[-5:]==".tiff"]
+        correlation_values = []
+        centerX = SpeckleAnalysis.getImage(f"{folderpath}/{allfiles[start]}")
+        height, width = np.shape(centerX)
+        if window_size >= min(height, width):
+            window_size = min(height, width)
+        centerX = centerX[(int(height/2) - window_size):(int(height/2) + window_size), (int(width/2) - window_size):(int(width/2) + window_size)]
+        Xstd, Xmean = np.std(centerX), np.mean(centerX)
+        for image in allfiles[start:end]:
+            clear_output(wait=True)
+            speckleImageY = SpeckleAnalysis.getImage(f"{folderpath}/{image}")
+            centerY = speckleImageY[(int(height/2) - window_size):(int(height/2) + window_size), (int(width/2) - window_size):(int(width/2) + window_size)]
+            Ystd, Ymean = np.std(centerY), np.mean(centerY)
+            correlation_values.append(np.mean((centerX-Xmean)*(centerY-Ymean))/(Xstd*Ystd))
+            print(f"{len(correlation_values)}/{len(allfiles[start:end])}")
+        time = np.arange(0,len(correlation_values)*time_seperation, time_seperation)
+        if expo_fit == True:
+            def exponential(x,a,b,c):
+                return a * np.exp(-b * x) + c
+            try:
+                popt, pcov = curve_fit(exponential, time, correlation_values)
+                plt.plot(time, exponential(time, *popt), 'r-', label='Exponential Fit')
+                print(f"The exponential fit parameters are: a={popt[0]}, b={popt[1]}, c={popt[2]}")
+            except RuntimeError:
+                print("Error - curve_fit failed")
+        if window_size >= min(height, width):
+            print(f"The window size given was too large for the image. The window size was set to {min(height, width)}")
+        plt.title("Correlation through time of speckle pattern")
+        plt.xlabel(f"Time ({time_scale})")
+        plt.ylabel("Correlation coefficient (a.u.)")
+        plt.scatter(time, correlation_values, color="black")
+        plt.show()
